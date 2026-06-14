@@ -77,7 +77,7 @@ New report confirms the damage done by previous policies.
 1. Push this repository to GitHub.
 2. Open Streamlit Community Cloud.
 3. Select this repo and set `app.py` as the entrypoint.
-4. Add `GROQ_API_KEY` in Streamlit secrets for LLM verification.
+
 
 ## Future Work
 
