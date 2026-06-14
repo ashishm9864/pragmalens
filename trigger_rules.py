@@ -74,4 +74,9 @@ class Presupposition:
     verified: bool = True
     subtlety: int = 3
     significance: str = ""
-
+    confidence: float = 0.75
+    rule_name: str = ""
+    rule_explanation: str = ""
+    subject: str = ""
+    complement: str = ""
+    source: str = "rule_based"

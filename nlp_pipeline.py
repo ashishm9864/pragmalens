@@ -112,6 +112,11 @@ def make_presupposition(
     start: int,
     end: int,
     subtlety: int = 3,
+    confidence: float = 0.75,
+    rule_name: str = "",
+    rule_explanation: str = "",
+    subject: str = "",
+    complement: str = "",
 ) -> Presupposition:
     return Presupposition(
         trigger_word=trigger_word,
@@ -121,6 +126,11 @@ def make_presupposition(
         span_start=start,
         span_end=end,
         subtlety=subtlety,
+        confidence=confidence,
+        rule_name=rule_name,
+        rule_explanation=rule_explanation,
+        subject=subject,
+        complement=clean_clause(complement),
     )
 
 
@@ -145,6 +155,7 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
                 cleaned = clean_clause(complement)
                 if complement_token is not None and complement_token.dep_ in {"dobj", "obj"}:
                     cleaned = f"{cleaned} exists or occurred"
+                confidence = 0.92 if complement_token is not None and complement_token.dep_ == "ccomp" else 0.78
                 seen.add(key)
                 candidates.append(
                     make_presupposition(
@@ -155,6 +166,11 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
                         token.idx,
                         token.idx + len(token.text),
                         subtlety=3,
+                        confidence=confidence,
+                        rule_name="factive_complement",
+                        rule_explanation="A factive verb such as 'know', 'regret', 'admit', or 'confirm' treats its complement as true background information.",
+                        subject=get_subject(token),
+                        complement=complement,
                     )
                 )
 
@@ -166,10 +182,13 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
             adjective_state = next((child for child in token.children if child.dep_ in {"acomp", "oprd"}), None)
             if lemma == "keep" and complement_token is not None and adjective_state is not None:
                 presupposition = f"{clean_clause(subtree_text(complement_token))} was already {adjective_state.text}"
+                confidence = 0.82
             elif complement_token is not None and complement_token.dep_ in {"dobj", "obj"}:
                 presupposition = f"{action} was already active, underway, or expected"
+                confidence = 0.72
             else:
                 presupposition = f"{subject} {auxiliary_for(subject)} previously {action}"
+                confidence = 0.90 if complement_token is not None and complement_token.dep_ == "xcomp" else 0.78
             seen.add(key)
             candidates.append(
                 make_presupposition(
@@ -180,13 +199,20 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
                     token.idx,
                     token.idx + len(token.text),
                     subtlety=2,
+                    confidence=confidence,
+                    rule_name="change_of_state_prior_state",
+                    rule_explanation="A change-of-state verb implies that an earlier state held before the reported change.",
+                    subject=subject,
+                    complement=complement,
                 )
             )
 
         if lemma in (IMPLICATIVE_VERBS_POS | IMPLICATIVE_VERBS_NEG) and token.pos_ in {"VERB", "AUX"}:
             subject = get_subject(token)
-            complement = get_complement(token)
+            complement_token = get_complement_token(token)
+            complement = subtree_text(complement_token) if complement_token is not None else get_complement(token)
             action = clean_clause(complement) or "do the relevant action"
+            confidence = 0.88 if complement_token is not None and complement_token.dep_ == "xcomp" else 0.68
             seen.add(key)
             candidates.append(
                 make_presupposition(
@@ -197,12 +223,18 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
                     token.idx,
                     token.idx + len(token.text),
                     subtlety=3,
+                    confidence=confidence,
+                    rule_name="implicative_attempt",
+                    rule_explanation="Implicative verbs such as 'manage' and 'fail' imply that the subject made an attempt or faced a relevant effort.",
+                    subject=subject,
+                    complement=complement,
                 )
             )
 
         if lemma in ITERATIVES or lower in ITERATIVES:
             head = token.head
             predicate = subtree_text(head) if head is not token else token.text
+            subject = get_subject(head) if head is not token and head.pos_ in {"VERB", "AUX"} else ""
             seen.add(key)
             candidates.append(
                 make_presupposition(
@@ -213,6 +245,11 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
                     token.idx,
                     token.idx + len(token.text),
                     subtlety=4,
+                    confidence=0.82,
+                    rule_name="iterative_prior_occurrence",
+                    rule_explanation="Iterative words such as 'again', 'still', 'back', and 'restore' signal that the event or state has a prior instance.",
+                    subject=subject,
+                    complement=predicate,
                 )
             )
 
@@ -220,8 +257,10 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
             if token.dep_ == "prep":
                 objects = [child for child in token.children if child.dep_ in {"pobj", "pcomp"}]
                 clause = subtree_text(objects[0]) if objects else subtree_text(token)
+                confidence = 0.74
             else:
                 clause = subtree_text(token.head)
+                confidence = 0.86
             seen.add(key)
             candidates.append(
                 make_presupposition(
@@ -232,6 +271,10 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
                     token.idx,
                     token.idx + len(token.text),
                     subtlety=3,
+                    confidence=confidence,
+                    rule_name="temporal_background_clause",
+                    rule_explanation="Temporal conjunctions often introduce an event as background context rather than the sentence's main assertion.",
+                    complement=clause,
                 )
             )
 
@@ -256,6 +299,10 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
                         token.idx,
                         noun.idx + len(noun.text),
                         subtlety=4,
+                        confidence=0.88 if noun.text.lower() == "king" else 0.76,
+                        rule_name="definite_np_existence",
+                        rule_explanation="Definite noun phrases with 'the' ask the reader to treat the described entity as identifiable or already present in the discourse.",
+                        complement=entity,
                     )
                 )
 
@@ -283,6 +330,10 @@ def detect_clefts(sentence: str) -> list[Presupposition]:
                     match.start(1),
                     match.end(1),
                     subtlety=4,
+                    confidence=0.91,
+                    rule_name="cleft_backgrounded_event",
+                    rule_explanation="Cleft constructions make the identity of a participant the focus while treating the underlying event as already accepted.",
+                    complement=action,
                 )
             )
     return candidates
@@ -372,11 +423,11 @@ def call_anthropic(sentence: str, candidate: Presupposition) -> dict:
 
 def call_llm(sentence: str, candidate: Presupposition) -> dict:
     providers = [
-        ("GROQ_API_KEY", call_groq),
-        ("OPENAI_API_KEY", call_openai),
-        ("ANTHROPIC_API_KEY", call_anthropic),
+        ("GROQ_API_KEY", "groq", call_groq),
+        ("OPENAI_API_KEY", "openai", call_openai),
+        ("ANTHROPIC_API_KEY", "anthropic", call_anthropic),
     ]
-    available = [(key, fn) for key, fn in providers if os.environ.get(key)]
+    available = [(key, label, fn) for key, label, fn in providers if os.environ.get(key)]
     if not available:
         return {
             "verified": True,
@@ -384,13 +435,16 @@ def call_llm(sentence: str, candidate: Presupposition) -> dict:
             "explanation": candidate.explanation,
             "significance": "LLM verification is disabled because no API key is configured.",
             "subtlety": candidate.subtlety,
+            "source": "rule_based",
         }
 
-    _, provider = available[0]
+    _, label, provider = available[0]
     last_error: Exception | None = None
     for attempt in range(2):
         try:
-            return provider(sentence, candidate)
+            result = provider(sentence, candidate)
+            result["source"] = label
+            return result
         except Exception as exc:
             last_error = exc
             if attempt == 0:
@@ -402,6 +456,7 @@ def call_llm(sentence: str, candidate: Presupposition) -> dict:
         "explanation": candidate.explanation,
         "significance": f"LLM verification failed, so this card shows rule-based output. Error: {type(last_error).__name__}",
         "subtlety": candidate.subtlety,
+        "source": "rule_based_fallback",
     }
 
 
@@ -417,6 +472,7 @@ def verify_with_llm(sentence: str, candidates: list[Presupposition]) -> list[Pre
         candidate.explanation = response.get("explanation", candidate.explanation)
         candidate.significance = response.get("significance", candidate.significance)
         candidate.subtlety = max(1, min(5, int(response.get("subtlety", candidate.subtlety))))
+        candidate.source = response.get("source", candidate.source)
         verified.append(candidate)
 
     return verified

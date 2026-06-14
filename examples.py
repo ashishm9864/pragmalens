@@ -6,6 +6,7 @@ EXAMPLES = {
         "He finally admitted his administration's failures.",
         "America needs to return to its founding principles.",
         "When did politicians stop caring about ordinary people?",
+        "The minister regretted that the warning signs were ignored.",
     ],
     "News Headlines": [
         "Tech CEO's failed promises anger investors.",
@@ -14,6 +15,7 @@ EXAMPLES = {
         "She manages to hold the coalition together.",
         "Before the collapse, the startup seemed unstoppable.",
         "New report confirms the damage done by previous policies.",
+        "The agency finally stopped hiding the inspection failures.",
     ],
     "Everyday Speech": [
         "It was the overtime work that burned her out.",
@@ -22,6 +24,7 @@ EXAMPLES = {
         "They managed to keep it secret.",
         "After he left the company, profits recovered.",
         "She managed to finish before the deadline.",
+        "Maya realized that the budget had already been cut.",
     ],
     "Classic Philosophy": [
         "The present king of France is bald.",
@@ -29,6 +32,7 @@ EXAMPLES = {
         "It was Oedipus who killed his father.",
         "John regrets that he accepted the offer.",
         "The present king of France is not bald.",
+        "It was the butler who stole the jewels.",
     ],
 }
 
@@ -39,3 +43,73 @@ DEMO_SENTENCES = [
     "New report confirms the damage done by previous policies.",
 ]
 
+KILLER_DEMOS = [
+    {
+        "title": "Classic credibility",
+        "sentence": "The present king of France is bald.",
+        "why": "Shows the philosophical roots of presupposition theory.",
+    },
+    {
+        "title": "Loaded question",
+        "sentence": "When did politicians stop caring about ordinary people?",
+        "why": "Shows how questions can smuggle in an accusation.",
+    },
+    {
+        "title": "Subtle everyday language",
+        "sentence": "She managed to finish before the deadline.",
+        "why": "Shows an implicit attempt and a temporal background assumption.",
+    },
+    {
+        "title": "News headline framing",
+        "sentence": "New report confirms the damage done by previous policies.",
+        "why": "Shows how headlines can treat contested claims as settled background.",
+    },
+    {
+        "title": "Judge interaction",
+        "sentence": "Type your own sentence into the input box.",
+        "why": "Shows confidence that the system is interactive, not pre-scripted.",
+    },
+]
+
+EVALUATION_CASES = [
+    {
+        "sentence": "The present king of France is bald.",
+        "expected": {"definite_np"},
+    },
+    {
+        "sentence": "Have you stopped lying to your clients?",
+        "expected": {"change_of_state"},
+    },
+    {
+        "sentence": "He knows that the company lied to investors.",
+        "expected": {"factive"},
+    },
+    {
+        "sentence": "They managed to cover it up again.",
+        "expected": {"implicative", "iterative"},
+    },
+    {
+        "sentence": "It was the working class that bore the burden.",
+        "expected": {"cleft", "definite_np"},
+    },
+    {
+        "sentence": "Before the merger collapsed, profits were strong.",
+        "expected": {"temporal"},
+    },
+    {
+        "sentence": "After he left the company, profits recovered.",
+        "expected": {"temporal"},
+    },
+    {
+        "sentence": "John regrets that he accepted the offer.",
+        "expected": {"factive"},
+    },
+    {
+        "sentence": "She managed to finish before the deadline.",
+        "expected": {"implicative", "temporal"},
+    },
+    {
+        "sentence": "He's back to his old habits again.",
+        "expected": {"iterative"},
+    },
+]

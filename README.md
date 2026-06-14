@@ -14,8 +14,31 @@ User input
 -> rule-based trigger detection
 -> presupposition candidate generation
 -> optional LLM verification and explanation
--> highlighted text and explanation cards
+-> highlighted text, explanation cards, rule evidence, charts, and reports
 ```
+
+## LLM Integration
+
+The LLM is not the primary detector. PragmaLens first uses spaCy and rule-based NLP to identify structured presupposition candidates. The LLM then:
+
+- verifies whether a candidate is genuine in context
+- rewrites the presupposition in plain English
+- explains why the wording matters to a reader
+- rates subtlety from 1 to 5
+
+If no API key is configured, the app falls back to rule-based output.
+
+## App Features
+
+- Single-sentence presupposition analysis
+- Highlighted trigger words
+- Trigger distribution and confidence charts
+- Rule evidence expanders showing the NLP logic
+- Negation test explanation
+- Markdown and JSON report downloads
+- Batch mode for multiple headlines/sentences
+- Internal benchmark evaluation tab
+- Demo-prep checklist and pitch text
 
 ## Trigger Types
 
@@ -62,4 +85,3 @@ New report confirms the damage done by previous policies.
 - More precise extraction for nested clauses
 - Corpus-scale analysis for articles and debate transcripts
 - User feedback loop for false positives and missed triggers
-
