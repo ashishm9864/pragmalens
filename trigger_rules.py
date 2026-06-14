@@ -38,7 +38,7 @@ CHANGE_STATE_VERBS = {
     "restart",
 }
 
-ITERATIVES = {"again", "still", "anymore", "yet", "back", "return", "repeat", "restore"}
+ITERATIVES = {"again", "still", "anymore", "yet", "back", "return", "repeat", "restore", "finally"}
 CLEFT_TRIGGERS = ["it was", "it is", "what"]
 TEMPORAL_CONJUNCTIONS = {"before", "after", "since", "when", "until", "while"}
 

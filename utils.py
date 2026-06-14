@@ -182,6 +182,71 @@ def display_confidence_chart(presuppositions: list[Presupposition]) -> None:
     st.plotly_chart(fig, width="stretch")
 
 
+def compute_media_literacy_score(results: list[Presupposition]) -> dict:
+    """
+    Computes a 0-10 Media Literacy Score based on:
+      - Number of presuppositions (more = higher load)
+      - Average subtlety (higher subtlety = harder to notice = higher load)
+      - Diversity of trigger types (more types = more sophisticated use)
+    Returns a dict with keys: score (float), label (str), color (str), explanation (str)
+    """
+    if not results:
+        return {
+            "score": 0.0,
+            "label": "Transparent",
+            "color": "#22C55E",
+            "explanation": "No presuppositions detected. This sentence makes its assumptions explicit.",
+        }
+
+    count = len(results)
+    avg_subtlety = sum(item.subtlety for item in results) / count
+    type_diversity = len({item.trigger_type for item in results})
+
+    count_score = min(count / 5, 1.0) * 10
+    subtlety_score = (avg_subtlety / 5) * 10
+    diversity_score = min(type_diversity / 4, 1.0) * 10
+
+    raw = (count_score * 0.4) + (subtlety_score * 0.4) + (diversity_score * 0.2)
+    score = round(min(raw, 10.0), 1)
+
+    if score <= 3:
+        label, color = "Low Load", "#22C55E"
+        explanation = "This text is relatively transparent. Its assumptions are few and easy to notice."
+    elif score <= 6:
+        label, color = "Moderate Load", "#F59E0B"
+        explanation = "This text contains several hidden assumptions. A careful reader should question the framing."
+    else:
+        label, color = "High Load", "#EF4444"
+        explanation = "This text is heavily loaded with presuppositions, some of which are subtle. Approach with critical awareness."
+
+    return {"score": score, "label": label, "color": color, "explanation": explanation}
+
+
+def display_media_literacy_score(score_dict: dict) -> None:
+    score = max(0.0, min(float(score_dict["score"]), 10.0))
+    color = html.escape(score_dict["color"])
+    label = html.escape(score_dict["label"])
+    explanation = html.escape(score_dict["explanation"])
+    bar_width = score * 10
+
+    st.markdown(
+        f"""
+        <section class="score-card" style="border-left-color:{color};color:var(--navy,#0F172A);">
+            <div style="font-size:0.82rem;font-weight:800;text-transform:uppercase;color:#475569;">
+                📊 Media Literacy Score
+            </div>
+            <div class="score-number" style="color:{color};">{score:.1f}<span style="font-size:1rem;color:#64748B;"> / 10</span></div>
+            <div style="font-weight:800;color:#0F172A;">{label}</div>
+            <div class="score-bar-track">
+                <div class="score-bar-fill" style="width:{bar_width:.0f}%;background:{color};"></div>
+            </div>
+            <p style="margin:8px 0 0 0;color:#334155;line-height:1.5;">{explanation}</p>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def display_pipeline_visual() -> None:
     labels = [
         "Input",

@@ -151,6 +151,9 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
         if lemma in FACTIVE_VERBS and token.pos_ in {"VERB", "AUX"}:
             complement_token = get_complement_token(token)
             complement = subtree_text(complement_token) if complement_token is not None else get_complement(token)
+            if not complement and token.dep_ == "relcl" and token.head.pos_ in {"NOUN", "PROPN"}:
+                complement_token = token.head
+                complement = token.head.text
             if complement:
                 cleaned = clean_clause(complement)
                 if complement_token is not None and complement_token.dep_ in {"dobj", "obj"}:
@@ -287,7 +290,7 @@ def detect_rule_based(sentence: str) -> list[Presupposition]:
             ]
             np_tokens = sorted([token, noun, *modifiers], key=lambda item: item.idx)
             np_text = " ".join(item.text for item in np_tokens)
-            if modifiers or noun.text.lower() in {"king", "official", "resignation", "damage", "mess", "burden"}:
+            if modifiers or noun.text.lower() in {"king", "official", "resignation", "damage", "mess", "burden", "truth"}:
                 entity = re.sub(r"^(the|a|an)\s+", "", clean_clause(subtree_text(noun)), flags=re.IGNORECASE)
                 seen.add(key)
                 candidates.append(
