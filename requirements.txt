@@ -6,4 +6,4 @@ plotly>=5.22
 groq>=0.9
 openai>=1.35
 anthropic>=0.30
-
+python-docx>=1.1

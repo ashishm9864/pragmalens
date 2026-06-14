@@ -49,24 +49,87 @@ COMPARE_PAIRS = [
         "a": "Government finally admits failure of long-running infrastructure policy.",
         "b": "Government announces new review of infrastructure investment programme.",
         "topic": "Infrastructure policy",
+        "benefit": "Shows an editor how 'finally admits failure' turns a policy update into a settled verdict before the article begins.",
     },
     {
         "name": "Political debate questions",
         "a": "When will you stop the reckless spending that damaged the economy?",
         "b": "What is your plan for managing government expenditure going forward?",
         "topic": "Economic policy",
+        "benefit": "Helps debate moderators spot loaded questions that embed blame before the candidate can answer.",
     },
     {
         "name": "Corporate press release vs. journalism",
         "a": "Company responsibly manages workforce transition amid market changes.",
         "b": "Company lays off 2,000 workers after missing quarterly targets.",
         "topic": "Corporate layoffs",
+        "benefit": "Helps reporters distinguish corporate framing from a more direct news headline.",
     },
     {
         "name": "Health communication framing",
         "a": "Study confirms the harmful long-term effects of the food additive.",
         "b": "New study examines potential health effects of common food additive.",
         "topic": "Public health",
+        "benefit": "Helps health writers avoid overstating what a study has established.",
+    },
+    {
+        "name": "Article headline edit: investigation",
+        "a": "Mayor finally admits the failed housing plan displaced families.",
+        "b": "Mayor responds to investigation into housing plan and tenant displacement.",
+        "topic": "Housing investigation",
+        "benefit": "Gives editors a fast way to compare a sharper headline against a neutral version before publication.",
+    },
+    {
+        "name": "Press release headline vs. reported headline",
+        "a": "District restores classroom excellence after years of neglect.",
+        "b": "District announces new classroom improvement plan after test score decline.",
+        "topic": "Education policy",
+        "benefit": "Shows how institutional copy can smuggle in a success story and a prior failure without proving either one.",
+    },
+    {
+        "name": "Court story headline framing",
+        "a": "Former executive fails to explain the missing investor funds.",
+        "b": "Former executive questioned about disputed investor fund transfers.",
+        "topic": "Legal reporting",
+        "benefit": "Helps legal reporters avoid headlines that presuppose wrongdoing before the evidence is tested.",
+    },
+    {
+        "name": "Public health headline framing",
+        "a": "Agency finally stops hiding the vaccine side-effect reports.",
+        "b": "Agency releases updated review of vaccine side-effect reports.",
+        "topic": "Public health communication",
+        "benefit": "Shows how a headline can imply concealment while a neutral version reports the same event without importing blame.",
+    },
+]
+
+ARTICLE_EXAMPLES = [
+    {
+        "name": "City budget article draft",
+        "text": (
+            "City officials finally admitted that the downtown recovery plan has failed. "
+            "Before the council approved another funding round, residents questioned why the agency kept ignoring neighborhood concerns. "
+            "The mayor said the new proposal would restore trust in the planning process. "
+            "Opposition members asked when the administration would stop blaming previous leaders for current delays. "
+            "A public hearing is scheduled for next week."
+        ),
+    },
+    {
+        "name": "Corporate layoff article draft",
+        "text": (
+            "The company confirmed the damage caused by its expansion strategy after announcing 2,000 layoffs. "
+            "Executives said they had managed to protect core research teams while reducing costs. "
+            "Before the cuts were disclosed, employees had asked whether leadership was still hiding the scale of the shortfall. "
+            "The firm said the workforce transition would position it for a return to sustainable growth."
+        ),
+    },
+    {
+        "name": "Public health explainer draft",
+        "text": (
+            "A new report confirms that the additive affected sleep quality in some participants. "
+            "Researchers said the evidence still requires replication before regulators change guidance. "
+            "When asked whether officials had stopped dismissing patient concerns, the agency said its review remained open. "
+            "The study authors warned against treating early findings as settled medical advice."
+        ),
     },
 ]
 
@@ -99,12 +162,17 @@ KILLER_DEMOS = [
     {
         "title": "The Compare Headlines Demo",
         "sentence": "Text A: 'Government finally admits failure.' vs Text B: 'Government announces new review.'",
-        "why": "Show the Compare tab. Paste these two headlines about the same story. Text A has factive ('admits') and implicative ('finally') triggers. Text B has none. This shows in 10 seconds how word choice embeds hidden assumptions.",
+        "why": "Show the Compare section. Paste these two headlines about the same story. Text A has factive ('admits') and iterative ('finally') triggers. Text B has none. This shows in 10 seconds how word choice embeds hidden assumptions.",
     },
     {
         "title": "The Media Literacy Score Demo",
-        "sentence": "When did politicians stop caring about ordinary people?",
-        "why": "Run this through the analyzer. Show the Media Literacy Score (should be 7-8/10 high load). Tell judges: 'We give presupposition density a number that anyone can understand.'",
+        "sentence": "She finally stopped hiding the truth she knew all along.",
+        "why": "Run this through the analyzer. Show the Media Literacy Score around 7-8/10 high load. Tell judges: 'We give presupposition density a number that anyone can understand.'",
+    },
+    {
+        "title": "The Article Audit Demo",
+        "sentence": "Load the city budget article draft in Article Lab.",
+        "why": "Show that PragmaLens is not only a sentence toy. It scans a full article draft, ranks the riskiest sentences, and exports an assumption ledger a journalist or editor could use before publication.",
     },
 ]
 

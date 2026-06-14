@@ -1,13 +1,15 @@
 import html
+import io
 import os
+import re
 from statistics import mean
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from examples import COMPARE_PAIRS, EVALUATION_CASES, EXAMPLES, KILLER_DEMOS
-from nlp_pipeline import run_pipeline
+from examples import ARTICLE_EXAMPLES, COMPARE_PAIRS, EVALUATION_CASES, EXAMPLES, KILLER_DEMOS
+from nlp_pipeline import load_spacy_model, run_pipeline
 from trigger_rules import TRIGGER_COLORS, TRIGGER_LABELS
 from utils import (
     build_json_report,
@@ -141,6 +143,24 @@ st.markdown(
         color: #166534;
         margin: 4px 0;
     }
+    .workflow-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 14px 16px;
+        height: 100%;
+    }
+    .workflow-card strong {
+        color: #0F172A;
+    }
+    .risk-sentence {
+        border: 1px solid #E2E8F0;
+        border-left: 5px solid #EF4444;
+        border-radius: 10px;
+        padding: 13px 15px;
+        background: #FFFFFF;
+        margin: 10px 0;
+    }
     .stButton > button, .stDownloadButton > button {
         border-radius: 8px;
         font-weight: 700;
@@ -247,6 +267,139 @@ def run_evaluation() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def extract_text_from_upload(uploaded_file) -> str:
+    filename = uploaded_file.name.lower()
+    raw = uploaded_file.getvalue()
+
+    if filename.endswith(".docx"):
+        try:
+            from docx import Document
+        except ImportError as exc:
+            raise RuntimeError("DOCX upload requires python-docx. Run: pip install python-docx") from exc
+
+        document = Document(io.BytesIO(raw))
+        parts = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
+        for table in document.tables:
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+        return "\n".join(parts)
+
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1")
+
+
+def split_text_into_sentences(text: str, limit: int) -> list[str]:
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    if not cleaned:
+        return []
+
+    nlp = load_spacy_model()
+    doc = nlp(cleaned[:200_000])
+    sentences = [
+        sentence.text.strip()
+        for sentence in doc.sents
+        if len(sentence.text.strip().split()) >= 4
+    ]
+    return sentences[:limit]
+
+
+def analyze_sentence_collection(sentences: list[str], use_llm: bool, progress=None):
+    summary_rows = []
+    detail_rows = []
+    sentence_results = []
+
+    if not sentences:
+        return pd.DataFrame(), pd.DataFrame(), sentence_results
+
+    for index, sentence in enumerate(sentences, start=1):
+        results = run_pipeline(sentence, use_llm=use_llm)
+        score_dict = compute_media_literacy_score(results)
+        media_score = score_dict["score"]
+        trigger_types = sorted({TRIGGER_LABELS.get(item.trigger_type, item.trigger_type) for item in results})
+
+        summary_rows.append(
+            {
+                "sentence_id": index,
+                "sentence": sentence,
+                "count": len(results),
+                "media_literacy_score": media_score,
+                "score_label": score_dict["label"],
+                "avg_confidence": round(mean(item.confidence for item in results), 2) if results else 0,
+                "avg_subtlety": round(mean(item.subtlety for item in results), 2) if results else 0,
+                "trigger_types": ", ".join(trigger_types),
+            }
+        )
+        for row in presuppositions_to_rows(sentence, results):
+            row["sentence_id"] = index
+            row["media_literacy_score"] = media_score
+            detail_rows.append(row)
+        sentence_results.append(
+            {
+                "sentence_id": index,
+                "sentence": sentence,
+                "results": results,
+                "score": media_score,
+                "score_label": score_dict["label"],
+            }
+        )
+        if progress is not None:
+            progress.progress(index / len(sentences))
+
+    return pd.DataFrame(summary_rows), pd.DataFrame(detail_rows), sentence_results
+
+
+def build_document_audit_report(title: str, summary_df: pd.DataFrame, detail_df: pd.DataFrame) -> str:
+    if summary_df.empty:
+        return "# PragmaLens Article Audit\n\nNo analyzable sentences were found."
+
+    total_presuppositions = int(summary_df["count"].sum())
+    avg_score = round(summary_df["media_literacy_score"].mean(), 1)
+    high_load_count = int((summary_df["media_literacy_score"] > 6).sum())
+    top_df = summary_df.sort_values(
+        ["media_literacy_score", "count", "avg_subtlety"],
+        ascending=False,
+    ).head(8)
+
+    lines = [
+        "# PragmaLens Article Audit",
+        "",
+        f"**Document:** {title or 'Untitled draft'}",
+        f"**Sentences scanned:** {len(summary_df)}",
+        f"**Total presuppositions:** {total_presuppositions}",
+        f"**Average manipulation load:** {avg_score}/10",
+        f"**High-load sentences:** {high_load_count}",
+        "",
+        "## Highest-Risk Sentences",
+        "",
+    ]
+
+    for _, row in top_df.iterrows():
+        lines.extend(
+            [
+                f"### Sentence {int(row['sentence_id'])}: {row['media_literacy_score']}/10",
+                row["sentence"],
+                "",
+                f"- Presupposition count: {int(row['count'])}",
+                f"- Trigger types: {row['trigger_types'] or 'none'}",
+                "",
+            ]
+        )
+
+    if not detail_df.empty:
+        lines.extend(["## Assumption Ledger", ""])
+        for _, row in detail_df.iterrows():
+            lines.append(
+                f"- Sentence {int(row['sentence_id'])}: **{row['trigger']}** "
+                f"({row['type']}) -> {row['presupposition']}"
+            )
+
+    return "\n".join(lines)
+
+
 st.sidebar.title("🔑 API Configuration")
 entered_key = st.sidebar.text_input(
     "Groq API Key",
@@ -292,8 +445,8 @@ st.markdown(
 )
 st.markdown("</div>", unsafe_allow_html=True)
 
-overview_tab, impact_tab, analyze_tab, batch_tab, eval_tab, prep_tab = st.tabs(
-    ["Overview", "🌍 Impact", "Analyze", "Batch Mode", "Evaluation", "Demo Prep"]
+overview_tab, impact_tab, analyze_tab, batch_tab, article_tab, eval_tab, prep_tab = st.tabs(
+    ["Overview", "🌍 Impact", "Analyze", "Batch Mode", "Article Lab", "Evaluation", "Demo Prep"]
 )
 
 with overview_tab:
@@ -630,6 +783,11 @@ with analyze_tab:
     compare_options = [pair["name"] for pair in COMPARE_PAIRS] + ["Custom"]
     selected_pair_name = st.selectbox("Load example pair", compare_options)
     selected_pair = next((pair for pair in COMPARE_PAIRS if pair["name"] == selected_pair_name), None)
+    if selected_pair:
+        st.info(
+            f"**Newsroom use case:** {selected_pair.get('benefit', 'Compare two versions before publication.')} "
+            f"Topic: {selected_pair.get('topic', 'general framing')}."
+        )
 
     if "compare_pair_loaded" not in st.session_state:
         st.session_state.compare_pair_loaded = selected_pair_name
@@ -721,47 +879,255 @@ with batch_tab:
     batch_use_llm = st.toggle("Use LLM in batch mode", value=False)
     if st.button("Run Batch Analysis", type="primary"):
         sentences = [line.strip() for line in batch_text.splitlines() if line.strip()]
-        summary_rows = []
-        detail_rows = []
-        batch_scores = []
-        progress = st.progress(0)
-        for index, sentence in enumerate(sentences, start=1):
-            results = run_pipeline(sentence, use_llm=batch_use_llm)
-            media_score = compute_media_literacy_score(results)["score"]
-            batch_scores.append(media_score)
-            detail_rows.extend(presuppositions_to_rows(sentence, results))
-            summary_rows.append(
-                {
-                    "sentence": sentence,
-                    "count": len(results),
-                    "avg_confidence": round(mean(item.confidence for item in results), 2) if results else 0,
-                    "avg_subtlety": round(mean(item.subtlety for item in results), 2) if results else 0,
-                    "media_literacy_score": media_score,
-                    "trigger_types": ", ".join(sorted({TRIGGER_LABELS.get(item.trigger_type, item.trigger_type) for item in results})),
-                }
+        if not sentences:
+            st.warning("Add at least one sentence before running batch analysis.")
+        else:
+            progress = st.progress(0)
+            summary_df, detail_df, _ = analyze_sentence_collection(sentences, batch_use_llm, progress)
+            st.markdown("**Summary**")
+            st.dataframe(summary_df, width="stretch", hide_index=True)
+            if not summary_df.empty:
+                avg_score = round(summary_df["media_literacy_score"].mean(), 1)
+                st.metric("Average Manipulation Load", f"{avg_score}/10")
+                fig = px.bar(summary_df, x="sentence", y="count", text="count", title="Presuppositions per Sentence")
+                fig.update_layout(height=360, margin=dict(l=10, r=10, t=45, b=10), xaxis_tickangle=-25)
+                st.plotly_chart(fig, width="stretch")
+            st.markdown("**Detailed Results**")
+            st.dataframe(detail_df, width="stretch", hide_index=True)
+            st.download_button(
+                "Download batch CSV",
+                detail_df.to_csv(index=False),
+                file_name="pragmalens-batch.csv",
+                mime="text/csv",
+                width="stretch",
             )
-            progress.progress(index / len(sentences))
 
-        summary_df = pd.DataFrame(summary_rows)
-        detail_df = pd.DataFrame(detail_rows)
-        st.markdown("**Summary**")
-        st.dataframe(summary_df, width="stretch", hide_index=True)
-        if batch_scores:
-            avg_score = round(mean(batch_scores), 1)
-            st.metric("Average Manipulation Load", f"{avg_score}/10")
-        if not summary_df.empty:
-            fig = px.bar(summary_df, x="sentence", y="count", text="count", title="Presuppositions per Sentence")
-            fig.update_layout(height=360, margin=dict(l=10, r=10, t=45, b=10), xaxis_tickangle=-25)
-            st.plotly_chart(fig, width="stretch")
-        st.markdown("**Detailed Results**")
-        st.dataframe(detail_df, width="stretch", hide_index=True)
-        st.download_button(
-            "Download batch CSV",
-            detail_df.to_csv(index=False),
-            file_name="pragmalens-batch.csv",
-            mime="text/csv",
-            width="stretch",
-        )
+with article_tab:
+    st.subheader("Article & Document Audit")
+    st.write(
+        "Upload a Word document or paste a full article draft. PragmaLens scans sentence by sentence, ranks the most loaded lines, and exports an assumption ledger for editors."
+    )
+
+    workflow_cols = st.columns(3, gap="large")
+    workflow_cols[0].markdown(
+        """
+        <div class="workflow-card">
+            <strong>1. Bring a draft</strong><br>
+            Paste an article, policy brief, transcript, or upload a .docx/.txt/.md file.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    workflow_cols[1].markdown(
+        """
+        <div class="workflow-card">
+            <strong>2. Find framing risk</strong><br>
+            The app scores each sentence and surfaces hidden assumptions before publication.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    workflow_cols[2].markdown(
+        """
+        <div class="workflow-card">
+            <strong>3. Export the ledger</strong><br>
+            Download a CSV or editor brief that documents every trigger and assumption.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    sample_options = ["Blank draft"] + [item["name"] for item in ARTICLE_EXAMPLES]
+    selected_article_sample = st.selectbox("Load newsroom article sample", sample_options)
+    selected_article = next(
+        (item for item in ARTICLE_EXAMPLES if item["name"] == selected_article_sample),
+        None,
+    )
+
+    if "article_sample_loaded" not in st.session_state:
+        st.session_state.article_sample_loaded = selected_article_sample
+        st.session_state.article_text = selected_article["text"] if selected_article else ""
+        st.session_state.article_title = selected_article_sample if selected_article else "Untitled draft"
+    elif selected_article_sample != st.session_state.article_sample_loaded:
+        st.session_state.article_sample_loaded = selected_article_sample
+        st.session_state.article_text = selected_article["text"] if selected_article else ""
+        st.session_state.article_title = selected_article_sample if selected_article else "Untitled draft"
+
+    uploaded_article = st.file_uploader(
+        "Upload an article or document",
+        type=["docx", "txt", "md"],
+        help="Supports Word documents, plain text, and Markdown drafts.",
+    )
+    if uploaded_article is not None and uploaded_article.name != st.session_state.get("article_upload_name"):
+        try:
+            st.session_state.article_text = extract_text_from_upload(uploaded_article)
+            st.session_state.article_title = uploaded_article.name
+            st.session_state.article_upload_name = uploaded_article.name
+            st.success(f"Loaded {uploaded_article.name}")
+        except RuntimeError as exc:
+            st.error(str(exc))
+
+    title_cols = st.columns([2, 1, 1], gap="large")
+    with title_cols[0]:
+        article_title = st.text_input("Audit title", key="article_title")
+    with title_cols[1]:
+        sentence_limit = st.slider("Sentence limit", min_value=5, max_value=80, value=35, step=5)
+    with title_cols[2]:
+        article_use_llm = st.toggle("Use LLM", value=False, key="article_use_llm")
+
+    article_text = st.text_area(
+        "Article, draft, transcript, or policy text",
+        key="article_text",
+        height=280,
+        placeholder="Paste a full article draft or upload a document above.",
+    )
+
+    if article_use_llm and not has_api_key():
+        st.caption("No API key found. Article Lab will fall back to rule-based output.")
+    elif article_use_llm:
+        st.caption(f"{source_label(article_use_llm)} enabled for article audit.")
+    else:
+        st.caption("Rule-based article audit. Recommended for fast whole-document scans.")
+
+    if st.button("Audit Article / Document", type="primary", width="stretch"):
+        sentences = split_text_into_sentences(article_text, sentence_limit)
+        if not sentences:
+            st.warning("No analyzable sentences found. Add more article text or upload a supported document.")
+        else:
+            st.info(f"Scanning {len(sentences)} sentences.")
+            progress = st.progress(0)
+            summary_df, detail_df, sentence_results = analyze_sentence_collection(
+                sentences,
+                article_use_llm,
+                progress,
+            )
+            st.session_state.article_audit = {
+                "title": article_title,
+                "summary_df": summary_df,
+                "detail_df": detail_df,
+                "sentence_results": sentence_results,
+            }
+
+    article_audit = st.session_state.get("article_audit")
+    if article_audit:
+        summary_df = article_audit["summary_df"]
+        detail_df = article_audit["detail_df"]
+        sentence_results = article_audit["sentence_results"]
+        all_presuppositions = [
+            item
+            for sentence_result in sentence_results
+            for item in sentence_result["results"]
+        ]
+
+        st.divider()
+        st.subheader("Article Audit Results")
+        if summary_df.empty:
+            st.info("No analyzable sentences were found.")
+        else:
+            total_presuppositions = int(summary_df["count"].sum())
+            avg_load = round(summary_df["media_literacy_score"].mean(), 1)
+            high_load_count = int((summary_df["media_literacy_score"] > 6).sum())
+            trigger_family_count = len({item.trigger_type for item in all_presuppositions})
+
+            metric_cols = st.columns(4, gap="large")
+            metric_cols[0].metric("Sentences scanned", len(summary_df))
+            metric_cols[1].metric("Total presuppositions", total_presuppositions)
+            metric_cols[2].metric("Average load", f"{avg_load}/10")
+            metric_cols[3].metric("Trigger families", trigger_family_count)
+
+            if high_load_count:
+                st.warning(
+                    f"{high_load_count} sentence(s) scored above 6/10. Review these lines for loaded framing before publication."
+                )
+            else:
+                st.success("No high-load sentences found. The draft is relatively transparent by the current rule set.")
+
+            chart_df = summary_df.assign(sentence_label=summary_df["sentence_id"].map(lambda value: f"S{value}"))
+            load_fig = px.bar(
+                chart_df,
+                x="sentence_label",
+                y="media_literacy_score",
+                color="score_label",
+                color_discrete_map={
+                    "Transparent": "#22C55E",
+                    "Low Load": "#22C55E",
+                    "Moderate Load": "#F59E0B",
+                    "High Load": "#EF4444",
+                },
+                hover_data=["sentence", "count", "trigger_types"],
+                text="media_literacy_score",
+                title="Framing Load Across the Document",
+            )
+            load_fig.update_layout(
+                height=340,
+                margin=dict(l=10, r=10, t=45, b=10),
+                yaxis=dict(range=[0, 10], title="Load score"),
+                xaxis=dict(title="Sentence"),
+            )
+            st.plotly_chart(load_fig, width="stretch")
+
+            if all_presuppositions:
+                st.markdown("**Trigger Distribution Across Document**")
+                display_trigger_chart(all_presuppositions)
+
+            top_df = summary_df.sort_values(
+                ["media_literacy_score", "count", "avg_subtlety"],
+                ascending=False,
+            ).head(10)
+            st.markdown("**Top Framing Risks**")
+            st.dataframe(
+                top_df[
+                    [
+                        "sentence_id",
+                        "media_literacy_score",
+                        "count",
+                        "trigger_types",
+                        "sentence",
+                    ]
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+
+            st.markdown("**High-Risk Sentence Review**")
+            sentence_lookup = {item["sentence_id"]: item for item in sentence_results}
+            for _, row in top_df.head(5).iterrows():
+                sentence_result = sentence_lookup[int(row["sentence_id"])]
+                with st.expander(
+                    f"Sentence {int(row['sentence_id'])} · {row['media_literacy_score']}/10 · {int(row['count'])} presuppositions"
+                ):
+                    st.markdown(
+                        f"""
+                        <div class="risk-sentence">
+                            <strong>Original sentence</strong><br>
+                            {html.escape(sentence_result["sentence"])}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    display_highlighted_text(sentence_result["sentence"], sentence_result["results"])
+                    if sentence_result["results"]:
+                        for presupposition in sentence_result["results"]:
+                            display_compact_presupposition(presupposition)
+                    else:
+                        st.info("No presuppositions detected in this sentence.")
+
+            download_cols = st.columns(2, gap="large")
+            download_cols[0].download_button(
+                "Download assumption ledger CSV",
+                detail_df.to_csv(index=False),
+                file_name="pragmalens-assumption-ledger.csv",
+                mime="text/csv",
+                width="stretch",
+                disabled=detail_df.empty,
+            )
+            download_cols[1].download_button(
+                "Download editor brief",
+                build_document_audit_report(article_audit["title"], summary_df, detail_df),
+                file_name="pragmalens-editor-brief.md",
+                mime="text/markdown",
+                width="stretch",
+            )
 
 with eval_tab:
     st.subheader("Internal Benchmark")
@@ -799,11 +1165,14 @@ with prep_tab:
         """
     )
 
-    st.subheader("Prize-Ready Checklist")
-    st.checkbox("Run the single-sentence demo with LLM verification enabled.")
-    st.checkbox("Run batch mode on 3-5 news/political examples.")
-    st.checkbox("Run the evaluation tab and mention the pass rate.")
-    st.checkbox("Show one rule evidence expander to prove real NLP is used.")
-    st.checkbox("Download the Markdown report as a polished artifact.")
+    st.subheader("Live Demo Flow")
+    st.markdown(
+        """
+        1. Start with the quick demo in Overview to show the hidden assumption layer.
+        2. Open Analyze and run the Media Literacy Score demo sentence.
+        3. Use Compare Two Texts to show how two headlines about the same event carry different framing loads.
+        4. Finish in Article Lab by loading a newsroom draft and exporting the assumption ledger.
+        """
+    )
 
 st.caption("Built at LingHacks VII | Grounded in formal pragmatics theory")

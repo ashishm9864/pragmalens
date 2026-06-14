@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+from functools import lru_cache
 from typing import Iterable
 
 from dotenv import load_dotenv
@@ -35,6 +36,7 @@ Respond ONLY in this JSON format:
 """
 
 
+@lru_cache(maxsize=1)
 def load_spacy_model():
     import spacy
 
