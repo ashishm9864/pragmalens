@@ -1,3 +1,8 @@
+import streamlit as st
+import os
+import json
+import re
+from dataclasses import dataclass
 import json
 import os
 import re
@@ -37,16 +42,19 @@ Respond ONLY in this JSON format:
 
 
 @lru_cache(maxsize=1)
+@st.cache_resource(show_spinner="Loading language model...")
 def load_spacy_model():
+    """Load spaCy model (installed via requirements.txt at build time)."""
     import spacy
-
     try:
         return spacy.load("en_core_web_sm")
-    except OSError as exc:
-        raise RuntimeError(
-            "spaCy model 'en_core_web_sm' is not installed. Run: "
-            "python -m spacy download en_core_web_sm"
-        ) from exc
+    except OSError:
+        st.error(
+            "❌ spaCy model not found. "
+            "Check that requirements.txt includes the en-core-web-sm line "
+            "and redeploy the app."
+        )
+        st.stop()
 
 
 def subtree_text(token) -> str:
