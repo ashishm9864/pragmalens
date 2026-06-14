@@ -1,0 +1,9 @@
+streamlit>=1.36
+spacy>=3.7
+python-dotenv>=1.0
+pandas>=2.2
+plotly>=5.22
+groq>=0.9
+openai>=1.35
+anthropic>=0.30
+
