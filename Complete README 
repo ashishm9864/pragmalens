@@ -676,7 +676,8 @@ MIT License — Use freely, modify, distribute, commercialize. No restrictions.
 Built at **LingHacks VII** by [Your Name/Team]
 
 - **GitHub**: https://github.com/ashishm9864/pragmalens
-- **Live demo**: [Streamlit Cloud URL — add after deployment]
+- **Live demo**: https://pragmalens.streamlit.app/
+
 
 
 Questions about the linguistics? Linguistic questions about presuppositions are answered in the project — dive into the code. The system prompt in `nlp_engine.py` explains presuppositions clearly.
