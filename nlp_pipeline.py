@@ -45,12 +45,8 @@ Respond ONLY in this JSON format:
 @st.cache_resource(show_spinner="Loading language model...")
 def load_spacy_model():
     import spacy
-    try:
-        return spacy.load("en_core_web_sm")
-    except OSError:
-        from spacy.cli import download
-        download("en_core_web_sm")
-        return spacy.load("en_core_web_sm")
+    return spacy.load("en_core_web_sm")
+
 
 
 def subtree_text(token) -> str:
