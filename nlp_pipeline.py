@@ -44,17 +44,13 @@ Respond ONLY in this JSON format:
 @lru_cache(maxsize=1)
 @st.cache_resource(show_spinner="Loading language model...")
 def load_spacy_model():
-    """Load spaCy model (installed via requirements.txt at build time)."""
     import spacy
     try:
         return spacy.load("en_core_web_sm")
     except OSError:
-        st.error(
-            "❌ spaCy model not found. "
-            "Check that requirements.txt includes the en-core-web-sm line "
-            "and redeploy the app."
-        )
-        st.stop()
+        from spacy.cli import download
+        download("en_core_web_sm")
+        return spacy.load("en_core_web_sm")
 
 
 def subtree_text(token) -> str:
