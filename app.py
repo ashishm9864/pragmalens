@@ -476,19 +476,16 @@ with overview_tab:
     with hero_cols[1]:
         st.write("")
         hero_analyze = st.button("→ Analyze")
-
+    hero_results = []
     if hero_analyze:
         with st.spinner("Checking for hidden assumptions..."):
-            if st.button("→ Analyze", key="hero_btn"):
+
                 hero_results = run_pipeline(hero_input_text, use_llm=has_api_key())
                 if hero_results:
                     display_presupposition_card(hero_results[0])
                 else:
                     st.info("No presuppositions detected for this sentence.")
-        if hero_results:
-            display_presupposition_card(hero_results[0])
-        else:
-            st.info("No presuppositions detected for this sentence.")
+
 
     st.divider()
 
